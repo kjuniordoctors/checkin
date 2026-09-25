@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>행사 체크인</title>
+<style>
+  :root{
+    --ink:#1a1d23; --ink-secondary:#565d6b; --ink-muted:#8a9099;
+    --surface:#ffffff; --surface-alt:#f6f7f9; --line:#e3e6ea;
+    --accent:#2f6fb0; --night:#b0532f;
+    --good-bg:#e4f3e8; --good-ink:#2c7a45;
+    --warn-bg:#fdf1de; --warn-ink:#a1650f;
+    --crit-bg:#f3e6e6; --crit-ink:#a13c3c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--surface-alt);
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif;
+    color:var(--ink); min-height:100vh;}
+  .wrap{max-width:520px;margin:0 auto;padding:28px 18px 60px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;
+    padding:28px 26px;box-shadow:0 2px 14px rgba(20,24,30,0.06);}
+  .eyebrow{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:0.2px;margin-bottom:10px;}
+  .name{font-size:30px;font-weight:800;letter-spacing:-0.4px;margin-bottom:6px;}
+  .affil{font-size:15px;color:var(--ink-secondary);margin-bottom:16px;}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+  .badge{font-size:13px;font-weight:700;color:#fff;padding:6px 14px;border-radius:99px;}
+  .badge.pm{background:var(--accent);}
+  .badge.night{background:var(--night);}
+  .seat-box{background:var(--surface-alt);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin-bottom:22px;}
+  .seat-label{font-size:12px;font-weight:700;color:var(--ink-muted);margin-bottom:6px;}
+  .seat-value{font-size:20px;font-weight:800;}
+  .seat-note{font-size:14px;color:var(--ink-secondary);}
+  button.checkin-btn{width:100%;padding:16px;font-size:17px;font-weight:800;color:#fff;
+    background:var(--accent);border:none;border-radius:12px;cursor:pointer;}
+  button.checkin-btn:active{opacity:0.85;}
+  button.checkin-btn:disabled{opacity:0.6;}
+  .done-box{background:var(--good-bg);color:var(--good-ink);border-radius:12px;
+    padding:18px;text-align:center;font-weight:800;font-size:16px;}
+  .done-time{font-weight:500;font-size:13px;margin-top:6px;opacity:0.85;}
+  .state{text-align:center;color:var(--ink-muted);padding:60px 10px;font-size:15px;}
+  .err{text-align:center;color:var(--crit-ink);background:var(--crit-bg);border-radius:12px;padding:20px;font-weight:700;}
+
+
+  html,body{margin:0;padding:0;background:var(--surface-alt);
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',-apple-system,BlinkMacSystemFont,sans-serif;
+    color:var(--ink);}
+  .wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px;}
+  h1{font-size:20px;font-weight:800;margin:0 0 4px;}
+  .sub{font-size:13px;color:var(--ink-muted);margin-bottom:18px;}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 10px;text-align:center;}
+  .tile .num{font-size:26px;font-weight:800;}
+  .tile .lbl{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+  input#search{width:100%;padding:12px 14px;font-size:15px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:16px;background:var(--surface);color:var(--ink);}
+  .group{margin-bottom:16px;}
+  .group-title{font-size:13px;font-weight:800;color:var(--ink-secondary);margin:0 0 6px 2px;}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  td{padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .p-name{font-weight:700;}
+  .p-affil{font-size:12px;color:var(--ink-muted);}
+  .p-seat{font-size:12px;color:var(--ink-secondary);white-space:nowrap;}
+  .badge{display:inline-block;font-size:10.5px;font-weight:700;color:#fff;padding:2px 8px;border-radius:99px;margin-right:3px;}
+  .badge.pm{background:var(--accent);}
+  .badge.night{background:var(--night);}
+  .status{font-size:12px;font-weight:700;white-space:nowrap;}
+  .status.in{color:var(--good-ink);}
+  .status.out{color:var(--ink-muted);}
+  button.toggle{font-size:12px;font-weight:700;padding:6px 10px;border-radius:8px;border:1px solid var(--line);
+    background:var(--surface);cursor:pointer;white-space:nowrap;}
+  button.toggle.in{background:var(--good-bg);color:var(--good-ink);border-color:var(--good-bg);}
+  .empty{text-align:center;color:var(--ink-muted);padding:30px;font-size:14px;}
+
+  .wrap.dash{max-width:760px;padding:22px 16px 60px;}
+  .wrap.tix{max-width:520px;padding:28px 18px 60px;}
+  #ticket-view .badge{font-size:13px;padding:6px 14px;margin-right:0;}
+</style>
+</head>
+<body>
+<div id="ticket-view" class="wrap tix" style="display:none"><div class="card" id="card"><div class="state">불러오는 중…</div></div></div>
+<div id="dash-view" style="display:none">
+<div class="wrap dash">
+  <h1>젊은의사포럼 &amp; 젊은의사의 밤 — 체크인 현황</h1>
+  <div class="sub" id="updated">불러오는 중…</div>
+  <div class="tiles">
+    <div class="tile"><div class="num" id="cnt-total">–</div><div class="lbl">전체 체크인</div></div>
+    <div class="tile"><div class="num" id="cnt-pm">–</div><div class="lbl">오후 참석</div></div>
+    <div class="tile"><div class="num" id="cnt-night">–</div><div class="lbl">저녁 참석</div></div>
+  </div>
+  <input id="search" placeholder="이름 또는 소속 검색">
+  <div id="list"></div>
+</div>
+</div>
+<script>
+var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxDbvY8a8VwkMjyVmXjEkytn7G1o8dVMevdVsKFfkqVCj7DUU5WNMar-Wm9-xE7CQsTrA/exec";
+var PARAMS = new URLSearchParams(location.search);
+if (PARAMS.get("t")) {
+  document.getElementById("ticket-view").style.display = "block";
+  (function(){
+    var TOKEN = PARAMS.get("t");
+
+  function sessionLabel(s){ return s; }
+
+  function render(a){
+    var card = document.getElementById('card');
+    if (!a){
+      card.innerHTML = '<div class="err">유효하지 않은 티켓입니다.<br>진행요원에게 문의해주세요.</div>';
+      return;
+    }
+    var badges = a.sessions.map(function(s){
+      var cls = s === '저녁' ? 'night' : 'pm';
+      return '<span class="badge ' + cls + '">' + s + '</span>';
+    }).join('');
+
+    var seatHtml;
+    if (a.table) {
+      seatHtml = '<div class="seat-label">배정 좌석</div><div class="seat-value">' + a.table + '테이블 · ' + a.seat + '번</div>';
+    } else {
+      seatHtml = '<div class="seat-label">배정 좌석</div><div class="seat-note">오후 세션은 자유 좌석입니다</div>';
+    }
+
+    var actionHtml;
+    if (a.checked_in) {
+      var t = a.checked_in_at ? new Date(a.checked_in_at) : null;
+      var tStr = t ? (t.getMonth()+1) + '/' + t.getDate() + ' ' + String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') : '';
+      actionHtml = '<div class="done-box">체크인 완료' + (tStr ? '<div class="done-time">' + tStr + ' 입장</div>' : '') + '</div>';
+    } else {
+      actionHtml = '<button class="checkin-btn" id="btn">체크인 하기</button>';
+    }
+
+    card.innerHTML =
+      '<div class="eyebrow">젊은의사포럼 &amp; 젊은의사의 밤</div>' +
+      '<div class="name">' + a.name + '</div>' +
+      '<div class="affil">' + a.affil + '</div>' +
+      '<div class="badges">' + badges + '</div>' +
+      '<div class="seat-box">' + seatHtml + '</div>' +
+      actionHtml;
+
+    var btn = document.getElementById('btn');
+    if (btn) {
+      btn.addEventListener('click', function(){
+        btn.disabled = true;
+        btn.textContent = '처리 중…';
+        var fd = new FormData();
+        fd.append('action', 'checkin');
+        fd.append('t', TOKEN);
+        fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams(fd) })
+          .then(function(r){ return r.json(); })
+          .then(function(res){
+            if (res.ok) { render(res.attendee); }
+            else { btn.disabled = false; btn.textContent = '다시 시도'; }
+          })
+          .catch(function(){ btn.disabled = false; btn.textContent = '다시 시도'; });
+      });
+    }
+  }
+
+  function load(){
+    fetch(SCRIPT_URL + '?action=ticket&t=' + encodeURIComponent(TOKEN))
+      .then(function(r){ return r.json(); })
+      .then(function(res){ render(res.ok ? res.attendee : null); })
+      .catch(function(){ render(null); });
+  }
+  load();
+})();
+} else {
+  document.getElementById("dash-view").style.display = "block";
+  (function(){
+    var ALL = [];
+
+  function badge(s){ var cls = s === '저녁' ? 'night' : 'pm'; return '<span class="badge ' + cls + '">' + s + '</span>'; }
+
+  function row(a){
+    var statusHtml = a.checked_in
+      ? '<button class="toggle in" data-t="' + a.token + '">체크인됨</button>'
+      : '<button class="toggle" data-t="' + a.token + '">체크인</button>';
+    return '<tr>' +
+      '<td><div class="p-name">' + a.name + '</div><div class="p-affil">' + a.affil + '</div>' +
+        a.sessions.map(badge).join('') + '</td>' +
+      '<td class="p-seat">' + (a.table ? (a.table + '-' + a.seat) : '자유석') + '</td>' +
+      '<td>' + statusHtml + '</td>' +
+    '</tr>';
+  }
+
+  function render(list){
+    var q = document.getElementById('search').value.trim().toLowerCase();
+    var filtered = q ? list.filter(function(a){
+      return a.name.toLowerCase().indexOf(q) >= 0 || a.affil.toLowerCase().indexOf(q) >= 0;
+    }) : list;
+
+    var groups = {};
+    var noTable = [];
+    filtered.forEach(function(a){
+      if (a.table) { (groups[a.table] = groups[a.table] || []).push(a); }
+      else { noTable.push(a); }
+    });
+
+    var html = '';
+    Object.keys(groups).sort().forEach(function(t){
+      html += '<div class="group"><div class="group-title">' + t + '테이블</div><table>' +
+        groups[t].map(row).join('') + '</table></div>';
+    });
+    if (noTable.length){
+      html += '<div class="group"><div class="group-title">오후만 참석 (자유석)</div><table>' +
+        noTable.map(row).join('') + '</table></div>';
+    }
+    if (!filtered.length) html = '<div class="empty">검색 결과가 없습니다.</div>';
+    document.getElementById('list').innerHTML = html;
+
+    document.querySelectorAll('button.toggle').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var already = btn.classList.contains('in');
+        if (already) return; // 취소는 진행요원 판단하에 시트에서 직접 수정
+        btn.disabled = true;
+        btn.textContent = '처리 중…';
+        var fd = new FormData();
+        fd.append('action', 'checkin');
+        fd.append('t', btn.getAttribute('data-t'));
+        fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams(fd) })
+          .then(function(r){ return r.json(); })
+          .then(function(){ load(); })
+          .catch(function(){ btn.disabled = false; btn.textContent = '체크인'; });
+      });
+    });
+  }
+
+  function updateTiles(list){
+    var total = list.filter(function(a){ return a.checked_in; }).length;
+    var pm = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('오후') >= 0; }).length;
+    var night = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('저녁') >= 0; }).length;
+    document.getElementById('cnt-total').textContent = total + ' / ' + list.length;
+    document.getElementById('cnt-pm').textContent = pm;
+    document.getElementById('cnt-night').textContent = night;
+  }
+
+  function load(){
+    fetch(SCRIPT_URL + '?action=data&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (!res.ok) return;
+        ALL = res.attendees;
+        updateTiles(ALL);
+        render(ALL);
+        var now = new Date();
+        document.getElementById('updated').textContent =
+          '업데이트: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+      });
+  }
+
+  document.getElementById('search').addEventListener('input', function(){ render(ALL); });
+  load();
+  setInterval(load, 5000);
+})();
+}
+</script>
+</body>
+</html>
