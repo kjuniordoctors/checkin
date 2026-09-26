@@ -158,11 +158,21 @@ if (PARAMS.get("t")) {
     }
   }
 
+  var tries = 0;
   function load(){
+    tries++;
     fetch(SCRIPT_URL + '?action=ticket&t=' + encodeURIComponent(TOKEN))
       .then(function(r){ return r.json(); })
       .then(function(res){ render(res.ok ? res.attendee : null); })
-      .catch(function(){ render(null); });
+      .catch(function(){
+        var card = document.getElementById('card');
+        if (tries < 4) {
+          card.innerHTML = '<div class="state">연결이 느립니다. 다시 불러오는 중… (' + tries + '/3)</div>';
+          setTimeout(load, 1500);
+        } else {
+          card.innerHTML = '<div class="err">네트워크 연결을 확인해주세요.<br><br><button class="checkin-btn" onclick="location.reload()">다시 시도</button></div>';
+        }
+      });
   }
   load();
 })();
@@ -185,10 +195,12 @@ if (PARAMS.get("t")) {
     '</tr>';
   }
 
+  function bySeat(a, b){ return (Number(a.seat) - Number(b.seat)) || String(a.name).localeCompare(String(b.name)); }
+
   function render(list){
     var q = document.getElementById('search').value.trim().toLowerCase();
     var filtered = q ? list.filter(function(a){
-      return a.name.toLowerCase().indexOf(q) >= 0 || a.affil.toLowerCase().indexOf(q) >= 0;
+      return String(a.name).toLowerCase().indexOf(q) >= 0 || String(a.affil).toLowerCase().indexOf(q) >= 0;
     }) : list;
 
     var groups = {};
@@ -199,9 +211,12 @@ if (PARAMS.get("t")) {
     });
 
     var html = '';
-    Object.keys(groups).sort().forEach(function(t){
+    // 테이블 번호를 숫자 순서로 (1, 2, … 10, 11)
+    Object.keys(groups).sort(function(a, b){
+      return (Number(a) - Number(b)) || String(a).localeCompare(String(b));
+    }).forEach(function(t){
       html += '<div class="group"><div class="group-title">' + t + '테이블</div><table>' +
-        groups[t].map(row).join('') + '</table></div>';
+        groups[t].sort(bySeat).map(row).join('') + '</table></div>';
     });
     if (noTable.length){
       html += '<div class="group"><div class="group-title">오후만 참석 (자유석)</div><table>' +
