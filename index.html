@@ -77,10 +77,23 @@
   .wrap.dash{max-width:760px;padding:22px 16px 60px;}
   .wrap.tix{max-width:520px;padding:28px 18px 60px;}
   #ticket-view .badge{font-size:13px;padding:6px 14px;margin-right:0;}
+  .notice{background:var(--warn-bg);color:var(--warn-ink);border-radius:12px;padding:16px 18px;font-weight:700;font-size:15px;line-height:1.5;text-align:center;}
+  .notice small{display:block;font-weight:500;font-size:13px;margin-top:6px;opacity:0.9;}
+  .seat-big{font-size:34px;font-weight:800;letter-spacing:-0.5px;}
+  .staff-tag{display:inline-block;font-size:11px;font-weight:800;color:var(--good-ink);background:var(--good-bg);padding:3px 9px;border-radius:99px;margin-bottom:10px;}
+  .dup{background:var(--crit-bg);color:var(--crit-ink);border-radius:12px;padding:12px 14px;font-weight:800;font-size:14px;text-align:center;margin-bottom:12px;}
+  .pin-box{max-width:360px;margin:40px auto;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px 22px;text-align:center;}
+  .pin-box h2{font-size:18px;margin:0 0 6px;}
+  .pin-box p{font-size:13px;color:var(--ink-muted);margin:0 0 16px;}
+  .pin-box input{width:100%;font-size:24px;letter-spacing:8px;text-align:center;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:12px;background:var(--surface);color:var(--ink);}
+  .pin-err{color:var(--crit-ink);font-size:13px;font-weight:700;min-height:18px;margin-bottom:6px;}
+  .linkbtn{background:none;border:none;color:var(--ink-muted);font-size:12px;text-decoration:underline;cursor:pointer;padding:8px;margin-top:14px;}
+  .foot{text-align:center;}
 </style>
 </head>
 <body>
-<div id="ticket-view" class="wrap tix" style="display:none"><div class="card" id="card"><div class="state">불러오는 중…</div></div></div>
+<div id="ticket-view" class="wrap tix" style="display:none"><div class="card" id="card"><div class="state">불러오는 중…</div></div><div class="foot" id="ticket-foot"></div></div>
+<div id="pin-view" style="display:none"></div>
 <div id="dash-view" style="display:none">
 <div class="wrap dash">
   <h1>젊은의사포럼 &amp; 젊은의사의 밤 — 체크인 현황</h1>
@@ -92,183 +105,245 @@
   </div>
   <input id="search" placeholder="이름 또는 소속 검색">
   <div id="list"></div>
+  <div class="foot"><button class="linkbtn" id="logout">이 기기에서 진행요원 해제</button></div>
 </div>
 </div>
 <script>
 var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxDbvY8a8VwkMjyVmXjEkytn7G1o8dVMevdVsKFfkqVCj7DUU5WNMar-Wm9-xE7CQsTrA/exec";
 var PARAMS = new URLSearchParams(location.search);
+var PIN_KEY = 'checkin_staff_pin';
+var memPin = '';
+
+// ── 진행요원 PIN (이 기기 브라우저에 저장) ──
+function getPin(){ try { return localStorage.getItem(PIN_KEY) || memPin; } catch(e){ return memPin; } }
+function setPin(p){ memPin = p; try { localStorage.setItem(PIN_KEY, p); } catch(e){} }
+function clearPin(){ memPin = ''; try { localStorage.removeItem(PIN_KEY); } catch(e){} }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+// PIN 입력 화면. onOk: 올바른 PIN일 때 실행
+function showPinForm(container, title, desc, onOk, onCancel){
+  container.innerHTML =
+    '<div class="pin-box"><h2>' + title + '</h2><p>' + desc + '</p>' +
+    '<input id="pin-in" type="password" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="PIN">' +
+    '<div class="pin-err" id="pin-err"></div>' +
+    '<button class="checkin-btn" id="pin-ok">확인</button>' +
+    (onCancel ? '<button class="linkbtn" id="pin-cancel">취소</button>' : '') + '</div>';
+  var input = document.getElementById('pin-in');
+  var btn = document.getElementById('pin-ok');
+  function submit(){
+    var p = input.value.trim();
+    if (!p) return;
+    btn.disabled = true; btn.textContent = '확인 중…';
+    fetch(SCRIPT_URL + '?action=verify&k=' + encodeURIComponent(p) + '&_=' + Date.now())
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (res.ok) { setPin(p); onOk(); }
+        else { document.getElementById('pin-err').textContent = 'PIN이 맞지 않습니다.'; btn.disabled = false; btn.textContent = '확인'; input.select(); }
+      })
+      .catch(function(){ document.getElementById('pin-err').textContent = '연결이 느립니다. 다시 눌러주세요.'; btn.disabled = false; btn.textContent = '확인'; });
+  }
+  btn.addEventListener('click', submit);
+  input.addEventListener('keydown', function(e){ if (e.key === 'Enter') submit(); });
+  if (onCancel) document.getElementById('pin-cancel').addEventListener('click', onCancel);
+  input.focus();
+}
+
+function badgeHtml(s){ var cls = s === '저녁' ? 'night' : 'pm'; return '<span class="badge ' + cls + '">' + esc(s) + '</span>'; }
+function fmtTime(v){
+  var t = v ? new Date(v) : null;
+  if (!t || isNaN(t)) return '';
+  return (t.getMonth()+1) + '/' + t.getDate() + ' ' + String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+}
+
 if (PARAMS.get("t")) {
+  // ───────── 개인 티켓 화면 (QR 스캔 시) ─────────
   document.getElementById("ticket-view").style.display = "block";
   (function(){
     var TOKEN = PARAMS.get("t");
-
-  function sessionLabel(s){ return s; }
-
-  function render(a){
     var card = document.getElementById('card');
-    if (!a){
-      card.innerHTML = '<div class="err">유효하지 않은 티켓입니다.<br>진행요원에게 문의해주세요.</div>';
-      return;
-    }
-    var badges = a.sessions.map(function(s){
-      var cls = s === '저녁' ? 'night' : 'pm';
-      return '<span class="badge ' + cls + '">' + s + '</span>';
-    }).join('');
+    var foot = document.getElementById('ticket-foot');
+    var current = null;
 
-    var seatHtml;
-    if (a.table) {
-      seatHtml = '<div class="seat-label">배정 좌석</div><div class="seat-value">' + a.table + '테이블 · ' + a.seat + '번</div>';
-    } else {
-      seatHtml = '<div class="seat-label">배정 좌석</div><div class="seat-note">오후 세션은 자유 좌석입니다</div>';
+    function seatHtml(a){
+      if (!a.has_seat) return '<div class="seat-label">배정 좌석</div><div class="seat-note">오후 세션은 자유 좌석입니다</div>';
+      if (a.checked_in && a.table) return '<div class="seat-label">배정 좌석</div><div class="seat-big">' + esc(a.table) + '테이블 · ' + esc(a.seat) + '번</div>';
+      return '<div class="seat-label">배정 좌석</div><div class="seat-note">체크인하면 좌석이 표시됩니다</div>';
     }
 
-    var actionHtml;
-    if (a.checked_in) {
-      var t = a.checked_in_at ? new Date(a.checked_in_at) : null;
-      var tStr = t ? (t.getMonth()+1) + '/' + t.getDate() + ' ' + String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0') : '';
-      actionHtml = '<div class="done-box">체크인 완료' + (tStr ? '<div class="done-time">' + tStr + ' 입장</div>' : '') + '</div>';
-    } else {
-      actionHtml = '<button class="checkin-btn" id="btn">체크인 하기</button>';
-    }
+    function render(a, opts){
+      opts = opts || {};
+      current = a;
+      if (!a){
+        card.innerHTML = '<div class="err">유효하지 않은 티켓입니다.<br>진행요원에게 문의해주세요.</div>';
+        foot.innerHTML = '';
+        return;
+      }
+      var staff = !!getPin();
+      var badges = a.sessions.map(badgeHtml).join('');
+      var action;
+      if (a.checked_in) {
+        var tStr = fmtTime(a.checked_in_at);
+        action = (opts.dup ? '<div class="dup">이미 체크인된 티켓입니다' + (tStr ? ' (' + tStr + ')' : '') + '</div>' : '') +
+          '<div class="done-box">체크인 완료' + (tStr ? '<div class="done-time">' + tStr + ' 입장</div>' : '') + '</div>';
+      } else if (staff) {
+        action = '<button class="checkin-btn" id="btn">체크인 하기</button>';
+      } else {
+        action = '<div class="notice">입구에서 진행요원에게 이 QR을 보여주세요<small>좌석은 체크인 후 안내됩니다</small></div>';
+      }
+      card.innerHTML =
+        (staff ? '<div class="staff-tag">진행요원 모드</div>' : '') +
+        '<div class="eyebrow">젊은의사포럼 &amp; 젊은의사의 밤</div>' +
+        '<div class="name">' + esc(a.name) + '</div>' +
+        '<div class="affil">' + esc(a.affil) + '</div>' +
+        '<div class="badges">' + badges + '</div>' +
+        '<div class="seat-box">' + seatHtml(a) + '</div>' +
+        action;
 
-    card.innerHTML =
-      '<div class="eyebrow">젊은의사포럼 &amp; 젊은의사의 밤</div>' +
-      '<div class="name">' + a.name + '</div>' +
-      '<div class="affil">' + a.affil + '</div>' +
-      '<div class="badges">' + badges + '</div>' +
-      '<div class="seat-box">' + seatHtml + '</div>' +
-      actionHtml;
+      foot.innerHTML = staff ? '' : '<button class="linkbtn" id="staff-login">진행요원 등록</button>';
+      var sl = document.getElementById('staff-login');
+      if (sl) sl.addEventListener('click', function(){
+        showPinForm(card, '진행요원 등록', '이 기기에서 한 번만 입력하면 됩니다', function(){ render(current); }, function(){ render(current); });
+        foot.innerHTML = '';
+      });
 
-    var btn = document.getElementById('btn');
-    if (btn) {
-      btn.addEventListener('click', function(){
-        btn.disabled = true;
-        btn.textContent = '처리 중…';
-        var fd = new FormData();
-        fd.append('action', 'checkin');
-        fd.append('t', TOKEN);
-        fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams(fd) })
+      var btn = document.getElementById('btn');
+      if (btn) btn.addEventListener('click', function(){
+        btn.disabled = true; btn.textContent = '처리 중…';
+        fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams({ action: 'checkin', t: TOKEN, k: getPin() }) })
           .then(function(r){ return r.json(); })
           .then(function(res){
-            if (res.ok) { render(res.attendee); }
+            if (res.ok) { render(res.attendee, { dup: res.already }); }
+            else if (res.error === 'unauthorized') { clearPin(); render(current); alertBox('진행요원 PIN이 바뀌었습니다. 다시 등록해주세요.'); }
             else { btn.disabled = false; btn.textContent = '다시 시도'; }
           })
           .catch(function(){ btn.disabled = false; btn.textContent = '다시 시도'; });
       });
     }
-  }
 
-  var tries = 0;
-  function load(){
-    tries++;
-    fetch(SCRIPT_URL + '?action=ticket&t=' + encodeURIComponent(TOKEN))
-      .then(function(r){ return r.json(); })
-      .then(function(res){ render(res.ok ? res.attendee : null); })
-      .catch(function(){
-        var card = document.getElementById('card');
-        if (tries < 4) {
-          card.innerHTML = '<div class="state">연결이 느립니다. 다시 불러오는 중… (' + tries + '/3)</div>';
-          setTimeout(load, 1500);
-        } else {
-          card.innerHTML = '<div class="err">네트워크 연결을 확인해주세요.<br><br><button class="checkin-btn" onclick="location.reload()">다시 시도</button></div>';
-        }
-      });
-  }
-  load();
-})();
+    function alertBox(msg){ card.insertAdjacentHTML('afterbegin', '<div class="dup">' + esc(msg) + '</div>'); }
+
+    var tries = 0;
+    function load(){
+      tries++;
+      fetch(SCRIPT_URL + '?action=ticket&t=' + encodeURIComponent(TOKEN) + '&_=' + Date.now())
+        .then(function(r){ return r.json(); })
+        .then(function(res){ var a = res.ok ? res.attendee : null; render(a, { dup: !!(a && a.checked_in && getPin()) }); })
+        .catch(function(){
+          if (tries < 4) {
+            card.innerHTML = '<div class="state">연결이 느립니다. 다시 불러오는 중… (' + tries + '/3)</div>';
+            setTimeout(load, 1500);
+          } else {
+            card.innerHTML = '<div class="err">네트워크 연결을 확인해주세요.<br><br><button class="checkin-btn" onclick="location.reload()">다시 시도</button></div>';
+          }
+        });
+    }
+    load();
+  })();
 } else {
-  document.getElementById("dash-view").style.display = "block";
+  // ───────── 현황판 (진행요원 전용) ─────────
   (function(){
     var ALL = [];
+    var timer = null;
+    var dash = document.getElementById("dash-view");
+    var pinView = document.getElementById("pin-view");
 
-  function badge(s){ var cls = s === '저녁' ? 'night' : 'pm'; return '<span class="badge ' + cls + '">' + s + '</span>'; }
-
-  function row(a){
-    var statusHtml = a.checked_in
-      ? '<button class="toggle in" data-t="' + a.token + '">체크인됨</button>'
-      : '<button class="toggle" data-t="' + a.token + '">체크인</button>';
-    return '<tr>' +
-      '<td><div class="p-name">' + a.name + '</div><div class="p-affil">' + a.affil + '</div>' +
-        a.sessions.map(badge).join('') + '</td>' +
-      '<td class="p-seat">' + (a.table ? (a.table + '-' + a.seat) : '자유석') + '</td>' +
-      '<td>' + statusHtml + '</td>' +
-    '</tr>';
-  }
-
-  function bySeat(a, b){ return (Number(a.seat) - Number(b.seat)) || String(a.name).localeCompare(String(b.name)); }
-
-  function render(list){
-    var q = document.getElementById('search').value.trim().toLowerCase();
-    var filtered = q ? list.filter(function(a){
-      return String(a.name).toLowerCase().indexOf(q) >= 0 || String(a.affil).toLowerCase().indexOf(q) >= 0;
-    }) : list;
-
-    var groups = {};
-    var noTable = [];
-    filtered.forEach(function(a){
-      if (a.table) { (groups[a.table] = groups[a.table] || []).push(a); }
-      else { noTable.push(a); }
-    });
-
-    var html = '';
-    // 테이블 번호를 숫자 순서로 (1, 2, … 10, 11)
-    Object.keys(groups).sort(function(a, b){
-      return (Number(a) - Number(b)) || String(a).localeCompare(String(b));
-    }).forEach(function(t){
-      html += '<div class="group"><div class="group-title">' + t + '테이블</div><table>' +
-        groups[t].sort(bySeat).map(row).join('') + '</table></div>';
-    });
-    if (noTable.length){
-      html += '<div class="group"><div class="group-title">오후만 참석 (자유석)</div><table>' +
-        noTable.map(row).join('') + '</table></div>';
+    function row(a){
+      var statusHtml = a.checked_in
+        ? '<button class="toggle in" data-t="' + esc(a.token) + '">체크인됨</button>'
+        : '<button class="toggle" data-t="' + esc(a.token) + '">체크인</button>';
+      return '<tr>' +
+        '<td><div class="p-name">' + esc(a.name) + '</div><div class="p-affil">' + esc(a.affil) + '</div>' +
+          a.sessions.map(badgeHtml).join('') + '</td>' +
+        '<td class="p-seat">' + (a.table ? (esc(a.table) + '-' + esc(a.seat)) : '자유석') + '</td>' +
+        '<td>' + statusHtml + '</td>' +
+      '</tr>';
     }
-    if (!filtered.length) html = '<div class="empty">검색 결과가 없습니다.</div>';
-    document.getElementById('list').innerHTML = html;
 
-    document.querySelectorAll('button.toggle').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        var already = btn.classList.contains('in');
-        if (already) return; // 취소는 진행요원 판단하에 시트에서 직접 수정
-        btn.disabled = true;
-        btn.textContent = '처리 중…';
-        var fd = new FormData();
-        fd.append('action', 'checkin');
-        fd.append('t', btn.getAttribute('data-t'));
-        fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams(fd) })
-          .then(function(r){ return r.json(); })
-          .then(function(){ load(); })
-          .catch(function(){ btn.disabled = false; btn.textContent = '체크인'; });
+    function bySeat(a, b){ return (Number(a.seat) - Number(b.seat)) || String(a.name).localeCompare(String(b.name)); }
+
+    function render(list){
+      var q = document.getElementById('search').value.trim().toLowerCase();
+      var filtered = q ? list.filter(function(a){
+        return String(a.name).toLowerCase().indexOf(q) >= 0 || String(a.affil).toLowerCase().indexOf(q) >= 0;
+      }) : list;
+
+      var groups = {};
+      var noTable = [];
+      filtered.forEach(function(a){
+        if (a.table) { (groups[a.table] = groups[a.table] || []).push(a); }
+        else { noTable.push(a); }
       });
-    });
-  }
 
-  function updateTiles(list){
-    var total = list.filter(function(a){ return a.checked_in; }).length;
-    var pm = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('오후') >= 0; }).length;
-    var night = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('저녁') >= 0; }).length;
-    document.getElementById('cnt-total').textContent = total + ' / ' + list.length;
-    document.getElementById('cnt-pm').textContent = pm;
-    document.getElementById('cnt-night').textContent = night;
-  }
-
-  function load(){
-    fetch(SCRIPT_URL + '?action=data&_=' + Date.now())
-      .then(function(r){ return r.json(); })
-      .then(function(res){
-        if (!res.ok) return;
-        ALL = res.attendees;
-        updateTiles(ALL);
-        render(ALL);
-        var now = new Date();
-        document.getElementById('updated').textContent =
-          '업데이트: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+      var html = '';
+      // 테이블 번호를 숫자 순서로 (1, 2, … 10, 11)
+      Object.keys(groups).sort(function(a, b){
+        return (Number(a) - Number(b)) || String(a).localeCompare(String(b));
+      }).forEach(function(t){
+        html += '<div class="group"><div class="group-title">' + esc(t) + '테이블</div><table>' +
+          groups[t].sort(bySeat).map(row).join('') + '</table></div>';
       });
-  }
+      if (noTable.length){
+        html += '<div class="group"><div class="group-title">오후만 참석 (자유석)</div><table>' +
+          noTable.map(row).join('') + '</table></div>';
+      }
+      if (!filtered.length) html = '<div class="empty">검색 결과가 없습니다.</div>';
+      document.getElementById('list').innerHTML = html;
 
-  document.getElementById('search').addEventListener('input', function(){ render(ALL); });
-  load();
-  setInterval(load, 5000);
-})();
+      document.querySelectorAll('button.toggle').forEach(function(btn){
+        btn.addEventListener('click', function(){
+          if (btn.classList.contains('in')) return; // 취소는 진행요원 판단하에 시트에서 직접 수정
+          btn.disabled = true;
+          btn.textContent = '처리 중…';
+          fetch(SCRIPT_URL, { method: 'POST', body: new URLSearchParams({ action: 'checkin', t: btn.getAttribute('data-t'), k: getPin() }) })
+            .then(function(r){ return r.json(); })
+            .then(function(res){ if (res.error === 'unauthorized') { needPin(); } else { load(); } })
+            .catch(function(){ btn.disabled = false; btn.textContent = '체크인'; });
+        });
+      });
+    }
+
+    function updateTiles(list){
+      var total = list.filter(function(a){ return a.checked_in; }).length;
+      var pm = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('오후') >= 0; }).length;
+      var night = list.filter(function(a){ return a.checked_in && a.sessions.indexOf('저녁') >= 0; }).length;
+      document.getElementById('cnt-total').textContent = total + ' / ' + list.length;
+      document.getElementById('cnt-pm').textContent = pm;
+      document.getElementById('cnt-night').textContent = night;
+    }
+
+    function load(){
+      fetch(SCRIPT_URL + '?action=data&k=' + encodeURIComponent(getPin()) + '&_=' + Date.now())
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+          if (!res.ok) { if (res.error === 'unauthorized') needPin(); return; }
+          ALL = res.attendees;
+          updateTiles(ALL);
+          render(ALL);
+          var now = new Date();
+          document.getElementById('updated').textContent =
+            '업데이트: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+        });
+    }
+
+    function start(){
+      pinView.style.display = 'none';
+      dash.style.display = 'block';
+      load();
+      if (!timer) timer = setInterval(load, 5000);
+    }
+
+    function needPin(){
+      clearPin();
+      if (timer) { clearInterval(timer); timer = null; }
+      dash.style.display = 'none';
+      pinView.style.display = 'block';
+      showPinForm(pinView, '진행요원 PIN', '체크인 현황판은 진행요원만 볼 수 있습니다.<br>이 기기에서 한 번만 입력하면 됩니다.', start);
+    }
+
+    document.getElementById('search').addEventListener('input', function(){ render(ALL); });
+    document.getElementById('logout').addEventListener('click', function(){ needPin(); });
+    if (getPin()) start(); else needPin();
+  })();
 }
 </script>
 </body>
